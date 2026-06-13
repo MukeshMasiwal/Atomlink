@@ -1,18 +1,19 @@
-# Atomlink
-AtomLink is a self-hosted WebRTC-powered communication platform enabling secure, low-latency video rooms without third-party video APIs. A modern real-time meeting platform built for seamless peer connectivity, room management, and scalable media streaming.
+# AtomLink ⚛️🔗
+
+AtomLink is a self-hosted WebRTC-powered communication platform enabling secure, low-latency video rooms without relying on third-party hosted video APIs.
 
 Built for scalability and real-time collaboration, AtomLink provides seamless room-based communication with custom signaling and media routing.
 
 ## Features
 
-*  Real-time video and audio communication
-*  Room-based meeting system
-*  Secure peer connections using WebRTC
-*  Low-latency media streaming
-*  Custom signaling server with Socket.IO
-*  Scalable architecture with SFU support
-*  Responsive modern UI
-*  Admin and client dashboards
+* 🎥 Real-time video and audio communication
+* 🏠 Room-based meeting system
+* 🔐 Secure peer connections using WebRTC
+* ⚡ Low-latency media streaming
+* 📡 Custom signaling server with Socket.IO
+* 🧩 Scalable architecture with SFU support
+* 📱 Responsive modern UI
+* 👨‍💼 Admin and client dashboards
 
 ## Tech Stack
 
@@ -98,14 +99,5 @@ CLIENT_URL=http://localhost:5173
 * Breakout rooms
 * Whiteboard collaboration
 
-## Why AtomLink?
 
-Most video platforms depend on third-party APIs. AtomLink takes a different route by owning the communication pipeline, ensuring flexibility, scalability, and compliance with hackathon constraints.
 
-## Contributing
-
-Pull requests are welcome. For major changes, please open an issue first.
-
-## License
-
-MIT License
