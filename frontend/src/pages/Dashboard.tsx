@@ -11,6 +11,7 @@ import {
   XCircle,
   Clock
 } from 'lucide-react';
+import { io } from 'socket.io-client';
 import './Dashboard.css';
 
 import { useAuthStore } from '../store/useAuthStore';
@@ -37,9 +38,26 @@ export default function Dashboard({ role }: DashboardProps) {
   const userName = name || 'User';
 
   useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+
     fetchCases();
     fetchSessions();
-  }, [role]);
+
+    const interval = setInterval(() => {
+      fetchCases();
+      fetchSessions();
+    }, 10000);
+
+    const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000');
+    socket.on("sessionUpdated", () => {
+      fetchSessions();
+    });
+
+    return () => {
+      clearInterval(interval);
+      socket.disconnect();
+    };
+  }, [role, userId, isAuthenticated]);
 
   const fetchCases = async () => {
     try {

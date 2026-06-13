@@ -11,9 +11,10 @@ const SessionSchema = new mongoose.Schema({
   roomToken: { type: String, required: true, unique: true },
   agentId: { type: String }, // Can be assigned later or at creation
   customerId: { type: String, required: true },
-  status: { type: String, enum: ['created', 'active', 'ended'], default: 'created' },
+  status: { type: String, enum: ['created', 'active', 'ended', 'resolved'], default: 'created' },
   startTime: { type: Date },
   endTime: { type: Date },
+  resolvedAt: { type: Date },
   duration: { type: Number }, // Duration in seconds
   participants: [{ type: String }], // Array of current active userIds
   logs: [ParticipantLogSchema]

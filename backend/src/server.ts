@@ -30,6 +30,9 @@ const io = new Server(server, {
   }
 });
 
+app.set('io', io);
+
+
 app.use(cors({
   origin: allowedOrigins,
   credentials: true
@@ -55,12 +58,6 @@ const startServer = async (port: number) => {
   await createWorkers();
 
   server.once('error', (error: NodeJS.ErrnoException) => {
-    if (error.code === 'EADDRINUSE') {
-      console.warn(`Port ${port} is in use, retrying on ${port + 1}`);
-      startServer(port + 1);
-      return;
-    }
-
     throw error;
   });
 

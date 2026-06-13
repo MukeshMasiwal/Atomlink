@@ -45,3 +45,48 @@ export const getChatHistory = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch chat history' });
   }
 };
+
+export const endSession = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const session = await Session.findById(id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    session.status = 'ended';
+    session.endTime = new Date();
+    await session.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('sessionUpdated', session);
+    }
+
+    res.status(200).json(session);
+  } catch (error) {
+    console.error('[API Error] endSession:', error);
+    res.status(500).json({ error: 'Failed to end session' });
+  }
+};
+
+export const resolveSession = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const session = await Session.findById(id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    session.status = 'resolved';
+    session.resolvedAt = new Date();
+    session.endTime = new Date();
+    await session.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('sessionUpdated', session);
+    }
+
+    res.status(200).json(session);
+  } catch (error) {
+    console.error('[API Error] resolveSession:', error);
+    res.status(500).json({ error: 'Failed to resolve session' });
+  }
+};

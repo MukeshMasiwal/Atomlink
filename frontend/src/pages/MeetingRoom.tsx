@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import * as mediasoupClient from 'mediasoup-client';
 import { useMediaStore } from '../store/useMediaStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Send, Users, MonitorUp, Settings, Signal, Shield, User } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Send, Users, MonitorUp, Settings, Signal, Shield, User, CheckCircle2 } from 'lucide-react';
 
 export default function MeetingRoom() {
   const { roomId } = useParams(); // This is the secure roomToken
@@ -34,8 +34,51 @@ export default function MeetingRoom() {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [showParticipants, setShowParticipants] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const { userId, isAuthenticated } = useAuthStore();
+  const { userId, isAuthenticated, role } = useAuthStore();
+
+  const localLabel = role === "Admin" ? "Agent" : "Client";
+  const remoteLabel = role === "Admin" ? "Client" : "Agent";
+
+  const renderParticipants = [
+    { id: userId, displayName: localLabel, isLocal: true, role: role === "Admin" ? "Support" : "Client" },
+    ...participants.filter(p => p !== userId).map(p => ({
+      id: p,
+      displayName: remoteLabel,
+      isLocal: false,
+      role: role === "Admin" ? "Client" : "Support"
+    }))
+  ];
+
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/sessions/token/${roomId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSessionId(data._id);
+        }
+      } catch (err) {
+        console.error('Failed to fetch session', err);
+      }
+    };
+    if (roomId) fetchSession();
+  }, [roomId]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (role === 'Admin' && sessionId) {
+        navigator.sendBeacon(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/sessions/${sessionId}/end`);
+      }
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (remoteStream) remoteStream.getTracks().forEach(t => t.stop());
+      if (sendTransportRef.current) sendTransportRef.current.close();
+      if (recvTransport) recvTransport.close();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [role, sessionId, localStream, remoteStream, recvTransport]);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -293,16 +336,70 @@ export default function MeetingRoom() {
     }
   };
 
-  const handleEndCall = () => {
+  const handleEndCall = async () => {
     console.log("End call clicked");
-    if (sendTransport) sendTransport.close();
-    if (recvTransport) recvTransport.close();
-    if (socketRef.current) socketRef.current.disconnect();
     
+    // 1. stop tracks
     if (localStream) localStream.getTracks().forEach(t => t.stop());
     if (remoteStream) remoteStream.getTracks().forEach(t => t.stop());
 
-    navigate('/dashboard');
+    // 2. close peers
+    if (sendTransport) sendTransport.close();
+    if (recvTransport) recvTransport.close();
+
+    // 3. remove listeners & 4. disconnect socket
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
+    
+    // 5. navigate
+    if (role === 'Admin') {
+      if (sessionId) {
+        try {
+          await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/sessions/${sessionId}/end`, {
+            method: 'PATCH'
+          });
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      navigate('/admin-dashboard');
+    } else {
+      navigate('/client-dashboard');
+    }
+  };
+
+  const handleResolveCall = async () => {
+    console.log("Resolve call clicked");
+    
+    // 1. stop tracks
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    if (remoteStream) remoteStream.getTracks().forEach(t => t.stop());
+
+    // 2. close peers
+    if (sendTransport) sendTransport.close();
+    if (recvTransport) recvTransport.close();
+
+    // 3. remove listeners & 4. disconnect socket
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
+
+    // 5. navigate
+    if (role === 'Admin' && sessionId) {
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/sessions/${sessionId}/resolve`, {
+          method: 'PATCH'
+        });
+      } catch (e) {
+        console.error(e);
+      }
+      navigate('/admin-dashboard');
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   const handleSendChat = (e: React.FormEvent) => {
@@ -367,13 +464,13 @@ export default function MeetingRoom() {
                   <div className="w-20 h-20 bg-[#1F2937] rounded-full flex items-center justify-center mb-3 border border-gray-700">
                     <User size={36} className="text-gray-500" />
                   </div>
-                  <h3 className="text-base font-semibold text-gray-200">You (Client)</h3>
+                  <h3 className="text-base font-semibold text-gray-200">{localLabel}</h3>
                   <span className="text-sm text-gray-400 mt-1">Camera is off</span>
                 </div>
               )}
               <div className="absolute top-3 left-3 z-10 bg-[#111827]/80 backdrop-blur-md px-3 py-1.5 rounded-lg flex items-center gap-2 border border-gray-700/50">
                 <Signal size={13} className="text-green-500" />
-                <span className="text-xs font-semibold text-gray-200">You (Client)</span>
+                <span className="text-xs font-semibold text-gray-200">{localLabel}</span>
                 {!micOn && <MicOff size={11} className="text-red-400 ml-1" />}
               </div>
             </div>
@@ -391,16 +488,16 @@ export default function MeetingRoom() {
                   <div className="w-20 h-20 bg-[#1F2937] rounded-full flex items-center justify-center mb-3 border border-gray-700">
                     <Shield size={36} className="text-blue-500/50" />
                   </div>
-                  <h3 className="text-base font-semibold text-gray-200">Agent</h3>
+                  <h3 className="text-base font-semibold text-gray-200">{remoteLabel}</h3>
                   <div className="flex items-center gap-2 mt-2">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm text-blue-400 font-medium">Waiting to join...</span>
+                    <span className="text-sm text-blue-400 font-medium">{remoteLabel} waiting to join...</span>
                   </div>
                 </div>
               )}
               <div className="absolute top-3 left-3 z-10 bg-[#111827]/80 backdrop-blur-md px-3 py-1.5 rounded-lg flex items-center gap-2 border border-gray-700/50">
                 <Signal size={13} className="text-green-500" />
-                <span className="text-xs font-semibold text-gray-200">Agent</span>
+                <span className="text-xs font-semibold text-gray-200">{remoteLabel}</span>
               </div>
             </div>
           </div>
@@ -476,6 +573,17 @@ export default function MeetingRoom() {
 
             <div className="w-px h-8 bg-gray-700 mx-1 self-center"></div>
 
+            <div className="w-px h-8 bg-gray-700 mx-1 self-center"></div>
+
+            {role === 'Admin' && (
+              <div className="relative group">
+                <button type="button" onClick={handleResolveCall} className="w-12 h-12 rounded-full flex items-center justify-center bg-green-600 hover:bg-green-500 text-white transition-all shadow-[0_0_16px_rgba(34,197,94,0.4)]">
+                  <CheckCircle2 size={20} className="w-5 h-5" />
+                </button>
+                <span className="absolute -top-9 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Resolve</span>
+              </div>
+            )}
+
             <div className="relative group">
               <button type="button" onClick={handleEndCall} className="w-12 h-12 rounded-full flex items-center justify-center bg-red-600 hover:bg-red-500 text-white transition-all shadow-[0_0_16px_rgba(239,68,68,0.4)]">
                 <PhoneOff size={20} className="w-5 h-5" />
@@ -493,39 +601,28 @@ export default function MeetingRoom() {
           <div className="shrink-0 p-4 border-b border-[#1F2937] bg-[#0B1120]/20">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-gray-300 tracking-wider uppercase">Participants</h2>
-              <span className="bg-[#1F2937] text-blue-400 text-xs font-bold px-2 py-0.5 rounded-full">{participants.length || 2}</span>
+              <span className="bg-[#1F2937] text-blue-400 text-xs font-bold px-2 py-0.5 rounded-full">{renderParticipants.length}</span>
             </div>
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#1F2937]/60 border border-gray-800/50 hover:bg-[#1F2937] transition-colors">
-                <div className="flex items-center gap-2.5">
-                  <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-xs font-bold">C</div>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1F2937]"></div>
+              {renderParticipants.map((p, idx) => (
+                <div key={p.id || idx} className="flex items-center justify-between p-2.5 rounded-xl bg-[#1F2937]/60 border border-gray-800/50 hover:bg-[#1F2937] transition-colors">
+                  <div className="flex items-center gap-2.5">
+                    <div className="relative">
+                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${p.isLocal ? 'from-blue-600 to-blue-800' : 'from-emerald-600 to-emerald-800'} flex items-center justify-center text-xs font-bold`}>
+                        {p.displayName.charAt(0)}
+                      </div>
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1F2937]"></div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-200 font-medium leading-none">{p.isLocal ? 'You' : p.displayName}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">{p.role}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-200 font-medium leading-none">You</p>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Client</p>
-                  </div>
-                </div>
-                <div className={`p-1 rounded ${micOn ? 'bg-blue-500/10 text-blue-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {micOn ? <Mic size={13} /> : <MicOff size={13} />}
-                </div>
-              </div>
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#1F2937]/60 border border-gray-800/50 hover:bg-[#1F2937] transition-colors">
-                <div className="flex items-center gap-2.5">
-                  <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-xs font-bold">A</div>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1F2937]"></div>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-200 font-medium leading-none">Agent</p>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Support</p>
+                  <div className={`p-1 rounded ${p.isLocal ? (micOn ? 'bg-blue-500/10 text-blue-400' : 'bg-red-500/10 text-red-400') : 'bg-blue-500/10 text-blue-400'}`}>
+                    {p.isLocal ? (micOn ? <Mic size={13} /> : <MicOff size={13} />) : <Mic size={13} />}
                   </div>
                 </div>
-                <div className="p-1 rounded bg-blue-500/10 text-blue-400">
-                  <Mic size={13} />
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
